@@ -207,15 +207,6 @@ class MeshDB(object):
         # Bigtable read with retries
         rows = self._execute_read(row_set=row_set, row_filter=filter_)
 
-        # Deserialize cells
-        for row_key, column_dict in rows.items():
-            for column, cell_entries in column_dict.items():
-                for cell_entry in cell_entries:
-                    cell_entry.value = column.deserialize(cell_entry.value)
-            # If no column array was requested, reattach single column's values directly to the row
-            if isinstance(columns, column_keys._Column):
-                rows[row_key] = cell_entries
-
         return rows
 
     def read_byte_row(
@@ -256,10 +247,17 @@ class MeshDB(object):
         row = self.read_byte_rows(row_keys=[row_key], columns=columns, start_time=start_time,
                                   end_time=end_time, end_time_inclusive=end_time_inclusive)
 
-        if isinstance(columns, column_keys._Column):
-            return row.get(row_key, [])
-        else:
-            return row.get(row_key, {})
+        return row.get(row_key, {})
+
+    def _partial_row_data_to_column_dict(self, partial_row_data):
+        new_column_dict = {}
+
+        for family_id, column_dict in partial_row_data._cells.items():
+            for column_key, column_values in column_dict.items():
+                column = column_keys.from_key(family_id, column_key)
+                new_column_dict[column] = column_values
+
+        return new_column_dict
 
     def _execute_read_thread(self, row_set_and_filter: Tuple[RowSet, RowFilter]):
         row_set, row_filter = row_set_and_filter
@@ -269,8 +267,9 @@ class MeshDB(object):
             return {}
 
         range_read = self.table.read_rows(row_set=row_set, filter_=row_filter)
-        res = {v.row_key: partial_row_data_to_column_dict(v)
-               for v in range_read}
+
+        res = {v.row_key.decode(): v.cells["0"][b"data"][0].value for v in range_read}
+
         return res
 
     def _execute_read(self, row_set: RowSet, row_filter: RowFilter = None) \
@@ -374,18 +373,18 @@ class MeshDB(object):
 
         return True
 
-    def write_data_dict(self, data_dict: dict):
+    def write_cv_data(self, data_list: list):
         """ Writes many key value pairs from dictionary
 
-        :param data_dict: dict
+        :param data_list: list of dicts
         :return: bool
             success indicator
         """
 
         rows = []
-        for key in data_dict:
-            val_dict = {"data": data_dict[key]['content']}
-            rows.append(self.mutate_row(key, val_dict,
+        for data_entry in data_list:
+            val_dict = {b"data": data_entry['content']}
+            rows.append(self.mutate_row(data_entry["filename"], val_dict,
                                         family_id=self.family_id))
 
             if len(rows) > 10000:
