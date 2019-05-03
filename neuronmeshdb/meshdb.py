@@ -311,7 +311,7 @@ class MeshDB(object):
         return combined_response
 
     def mutate_row(self, row_key: bytes,
-                   val_dict: Dict[column_keys._Column, Any],
+                   val_dict: dict,
                    time_stamp: Optional[datetime.datetime] = None,
                    family_id=None
                    ) -> bigtable.row.Row:
@@ -320,6 +320,7 @@ class MeshDB(object):
         :param row_key: serialized bigtable row key
         :param val_dict: Dict[column_keys._TypedColumn: bytes]
         :param time_stamp: None or datetime
+        :param family_id: None or str
         :return: list
         """
         if family_id is None:
@@ -385,6 +386,27 @@ class MeshDB(object):
         for data_entry in data_list:
             val_dict = {b"data": data_entry['content']}
             rows.append(self.mutate_row(data_entry["filename"], val_dict,
+                                        family_id=self.family_id))
+
+            if len(rows) > 10000:
+                self.bulk_write(rows)
+                rows = []
+
+        if len(rows) > 0:
+            self.bulk_write(rows)
+
+    def write_data(self, data_dict: dict):
+        """ Writes many key value pairs from dictionary
+
+        :param data_dict: dicts
+        :return: bool
+            success indicator
+        """
+
+        rows = []
+        for key in data_dict:
+            val_dict = {b"data": data_dict[key]}
+            rows.append(self.mutate_row(key, val_dict,
                                         family_id=self.family_id))
 
             if len(rows) > 10000:
