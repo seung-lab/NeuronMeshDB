@@ -45,6 +45,7 @@ class MeshDB(object):
                  table_id: str,
                  instance_id: str = "neuronmeshdb",
                  project_id: str = "neuromancer-seung-import",
+                 is_new: bool = False,
                  credentials: Optional[credentials.Credentials] = None,
                  client: bigtable.Client = None,
                  logger: Optional[logging.Logger] = None) -> None:
@@ -70,6 +71,8 @@ class MeshDB(object):
 
         self._table = self.instance.table(self.table_id)
 
+        if is_new:
+            self._check_and_create_table()
 
     @property
     def client(self) -> bigtable.Client:
@@ -102,6 +105,17 @@ class MeshDB(object):
     @property
     def family_ids(self):
         return [self.family_id]
+
+    def _check_and_create_table(self) -> None:
+        """ Checks if table exists and creates new one if necessary """
+        table_ids = [t.table_id for t in self.instance.list_tables()]
+
+        if not self.table_id in table_ids:
+            self.table.create()
+            f = self.table.column_family(self.family_id)
+            f.create()
+
+            self.logger.info(f"Table {self.table_id} created")
 
     def get_serialized_info(self):
         """ Rerturns dictionary that can be used to load this ChunkedGraph
@@ -300,7 +314,7 @@ class MeshDB(object):
     def mutate_row(self, row_key: bytes,
                    val_dict: Dict[column_keys._Column, Any],
                    time_stamp: Optional[datetime.datetime] = None,
-                   isbytes: bool = False
+                   family_id=None
                    ) -> bigtable.row.Row:
         """ Mutates a single row
 
@@ -309,14 +323,15 @@ class MeshDB(object):
         :param time_stamp: None or datetime
         :return: list
         """
+        if family_id is None:
+            family_id = self.family_id
+
         row = self.table.row(row_key)
 
-        for column, value in val_dict.items():
-            if not isbytes:
-                value = column.serialize(value)
+        for key, value in val_dict.items():
 
-            row.set_cell(column_family_id=column.family_id,
-                         column=column.key,
+            row.set_cell(column_family_id=family_id,
+                         column=key,
                          value=value,
                          timestamp=time_stamp)
         return row
@@ -359,3 +374,23 @@ class MeshDB(object):
 
         return True
 
+    def write_data_dict(self, data_dict: dict):
+        """ Writes many key value pairs from dictionary
+
+        :param data_dict: dict
+        :return: bool
+            success indicator
+        """
+
+        rows = []
+        for key in data_dict:
+            val_dict = {"data": data_dict[key]['content']}
+            rows.append(self.mutate_row(key, val_dict,
+                                        family_id=self.family_id))
+
+            if len(rows) > 10000:
+                self.bulk_write(rows)
+                rows = []
+
+        if len(rows) > 0:
+            self.bulk_write(rows)
