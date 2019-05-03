@@ -86,7 +86,7 @@ def unhandled_exception(e):
 
 @bp.route('/<table_id>/<key>', methods=['GET'])
 def get_entry(table_id, key):
-    mdb = app_utils.get_cg(table_id)
+    mdb = app_utils.get_mdb(table_id)
 
     data = mdb.read_byte_row(key)
 

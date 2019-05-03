@@ -34,7 +34,7 @@ class DoNothingCreds(credentials.Credentials):
 
 
 def get_bigtable_client(config):
-    project_id = config.get('project_id', 'pychunkedgraph')
+    project_id = config.get('project_id', 'neuronmeshdb')
 
     if config.get('emulate', False):
         credentials = DoNothingCreds()
@@ -47,9 +47,9 @@ def get_bigtable_client(config):
     return client
 
 
-def get_cg(table_id):
+def get_mdb(table_id):
     if table_id not in cache:
-        instance_id = current_app.config['CHUNKGRAPH_INSTANCE_ID']
+        instance_id = current_app.config['INSTANCE_ID']
         client = get_bigtable_client(current_app.config)
 
         # Create ChunkedGraph logging
