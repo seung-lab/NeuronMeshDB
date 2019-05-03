@@ -7,3 +7,5 @@ flask
 flask_cors
 codecov
 zstandard
+multiwrapper
+python-json-logger

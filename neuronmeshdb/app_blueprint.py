@@ -4,6 +4,8 @@ import json
 import time
 import datetime
 
+from neuronmeshdb import app_utils
+
 bp = Blueprint('neuronmeshdb', __name__, url_prefix="/meshdb")
 __version__ = "0.1.0"
 # -------------------------------
@@ -82,16 +84,10 @@ def unhandled_exception(e):
 # -------------------
 
 
-def get_db():
-    if 'db' not in g:
-        g.db = database.JsonDataBase()
-    return g.db
+@bp.route('/<table_id>/<key>', methods=['GET'])
+def get_entry(table_id, key):
+    mdb = app_utils.get_cg(table_id)
 
-
-@bp.route('/<key>', methods=['GET'])
-def get_entry(key):
-    db = get_db()
-
-    data = db.read_entry(key)
+    data = mdb.read_byte_row(key)
 
     return data
